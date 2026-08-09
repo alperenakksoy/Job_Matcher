@@ -12,9 +12,9 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(
-        name = "resumes",
+        name = "app_resumes",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_resumes_user_file_hash",
+                name = "uk_app_resumes_user_file_hash",
                 columnNames = {"user_id", "file_hash"}
         )
 )

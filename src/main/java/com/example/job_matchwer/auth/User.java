@@ -5,12 +5,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.HashSet;
-import java.util.Set;
-
 @Entity
 @Getter
-@Table(name = "users")
+@Setter
+@Table(name = "app_users")
 public class User extends BaseEntity {
 
     @Column(nullable = false, unique = true)
@@ -19,12 +17,10 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private String passwordHash;
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(
-            name = "user_roles",
-            joinColumns = @JoinColumn(name = "user_id")
-    )
     @Enumerated(EnumType.STRING)
-    @Column(name = "role")
-    private Set<Role> roles = new HashSet<>();
+    @Column(nullable = false, length = 20)
+    private Role role;
+
+    @Column(nullable = false)
+    private boolean enabled = true;
 }

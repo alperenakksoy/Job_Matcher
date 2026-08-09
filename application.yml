@@ -37,19 +37,18 @@ spring:
 
 server:
   port: 8080
-  error:
-    include-message: always
-    include-stacktrace: never
+  servlet:
+    context-path: /api
+
+jwt:
+  secret: ${JWT_SECRET:}
+  access-token-ttl: 15m
+  refresh-token-ttl: 7d
+  issuer: jobmatcher
 
 app:
-  jwt:
-    secret: ${JWT_SECRET:}          # env'den gelsin, boşsa uygulama açılmasın
-    access-token-ttl: 15m
-    refresh-token-ttl: 7d
-    issuer: jobmatcher
   storage:
-    resume-path: ./storage/resumes   # dosya yolu config'den, koda gömme
-
+    resume-path: ./storage/resumes
 management:
   endpoints:
     web:
@@ -62,5 +61,6 @@ management:
 logging:
   level:
     root: INFO
-    com.seninpaket.jobmatcher: DEBUG   # kendi paket adınla değiştir
+    com.example.job_matchwer: DEBUG
     org.hibernate.SQL: DEBUG
+    org.springframework.security: DEBUG

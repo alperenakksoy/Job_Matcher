@@ -12,9 +12,9 @@ import java.time.Instant;
 
 @Entity
 @Table(
-        name = "jobs",
+        name = "app_jobs",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_jobs_source_external_id",
+                name = "uq_jobs_external_source",
                 columnNames = {"source", "external_id"}
         ),
         indexes = {
@@ -34,10 +34,10 @@ public class Job extends BaseEntity {
     @Column(name = "external_id", nullable = false, length = 255)
     private String externalId;
 
-    @Column(nullable = false, length = 500)
+    @Column(nullable = false, length = 255)
     private String title;
 
-    @Column(nullable = false, length = 255)
+    @Column(name = "company", nullable = false, length = 255)
     private String company;
 
     @Column(length = 255)
