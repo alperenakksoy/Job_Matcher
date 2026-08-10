@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import java.time.ZoneId;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -48,24 +49,26 @@ public class ResumeService {
             }
 
             // 4. Dosyayı Diske Yaz
-            // Sadece fiziksel dosya adı için rastgele bir UUID üretiyoruz
             UUID uniqueFileId = UUID.randomUUID();
-            Path userDirectory = Paths.get(UPLOAD_DIR, user.getId().toString());
+
+            // DÜZELTME BURADA: Projenin çalıştığı kök dizini (absolute path) alıyoruz
+            Path projectRoot = Paths.get(System.getProperty("user.dir"));
+            Path userDirectory = projectRoot.resolve(UPLOAD_DIR).resolve(user.getId().toString());
 
             // Kullanıcı için klasör yoksa oluştur
             if (!Files.exists(userDirectory)) {
                 Files.createDirectories(userDirectory);
             }
 
-            // Dosyayı diske yaz (Örn: storage/resumes/kullanici_id/rastgele-uuid.pdf)
+            // Dosyayı diske yaz (Tomcat hatasını önlemek için toAbsolutePath() kullanıyoruz)
             Path filePath = userDirectory.resolve(uniqueFileId.toString() + ".pdf");
-            file.transferTo(filePath.toFile());
+            file.transferTo(filePath.toAbsolutePath().toFile());
 
             // 5. Veritabanına Kaydet (Oluşturduğun Constructor'ı kullanıyoruz)
             Resume resume = new Resume(
                     user,
                     file.getOriginalFilename(),
-                    filePath.toString(), // Entity'deki storagePath alanı
+                    filePath.toAbsolutePath().toString(), // Entity'deki storagePath alanına tam yolu yazıyoruz
                     fileHash,
                     file.getSize(),      // Entity'deki fileSizeBytes alanı
                     1                    // default version
@@ -128,9 +131,9 @@ public class ResumeService {
         return ResumeResponseDto.builder()
                 .id(resume.getId())
                 .originalFileName(resume.getOriginalFileName())
-                .size(resume.getFileSizeBytes()) // Entity'deki fileSizeBytes alanını eşleştirdik
+                .size(resume.getFileSizeBytes())
                 .status(resume.getStatus())
-                .uploadedAt(LocalDateTime.from(resume.getCreatedAt()))
+                .uploadedAt(LocalDateTime.ofInstant(resume.getCreatedAt(), ZoneId.systemDefault()))
                 .build();
     }
 }

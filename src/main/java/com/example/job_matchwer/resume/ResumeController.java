@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/resumes")
+@RequestMapping("/resumes")
 @RequiredArgsConstructor
 public class ResumeController {
 
