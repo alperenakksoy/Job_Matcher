@@ -2,9 +2,12 @@ package com.example.job_matchwer.resume;
 
 import com.example.job_matchwer.auth.User;
 import com.example.job_matchwer.auth.UserRepository;
+import com.example.job_matchwer.common.exception.DuplicateResourceException;
 import com.example.job_matchwer.common.exception.FileSizeException;
 import com.example.job_matchwer.common.exception.InvalidFileException;
+import com.example.job_matchwer.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -35,8 +38,9 @@ public class ResumeService {
         try {
             validatePdf(file);
 
+            // Updated to ResourceNotFoundException
             User user = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
 
             String fileHash = calculateHash(file.getBytes());
             var existingResume = resumeRepository.findByUserEmailAndFileHash(email, fileHash);
@@ -46,7 +50,6 @@ public class ResumeService {
             }
 
             UUID uniqueFileId = UUID.randomUUID();
-
             Path projectRoot = Paths.get(System.getProperty("user.dir"));
             Path userDirectory = projectRoot.resolve(UPLOAD_DIR).resolve(user.getId().toString());
 
@@ -66,12 +69,15 @@ public class ResumeService {
                     1
             );
 
-            Resume savedResume = resumeRepository.save(resume);
-
-            return mapToDto(savedResume);
+            try {
+                Resume savedResume = resumeRepository.save(resume);
+                return mapToDto(savedResume);
+            } catch (DataIntegrityViolationException e) {
+                throw new DuplicateResourceException("This CV was just uploaded in a concurrent request.");
+            }
 
         } catch (IOException | NoSuchAlgorithmException e) {
-            throw new RuntimeException("Error has been occurred during the upload the file: " + e.getMessage());
+            throw new RuntimeException("Error has been occurred during the upload the file: " + e.getMessage(), e);
         }
     }
 
@@ -84,7 +90,7 @@ public class ResumeService {
 
     public ResumeResponseDto getUserResumeById(UUID id, String email) {
         Resume resume = resumeRepository.findByIdAndUserEmail(id, email)
-                .orElseThrow(() -> new RuntimeException("CV has not been found or you do not have the access"));
+                .orElseThrow(() -> new ResourceNotFoundException("CV has not been found or you do not have access."));
         return mapToDto(resume);
     }
 
