@@ -1,0 +1,14 @@
+jwt:
+  secret: rPn+dkZHyGIbxANse1SPjaVoEVZZZv/9zznc+H2i3u/XtfimPtousCb/uI87tVDQw+snaKnnLXWjrbwa5Wk+zA==
+  access-token-ttl: 15m
+  refresh-token-ttl: 7d
+  issuer: jobmatcher
+
+app:
+  storage:
+    resume-path: ./build/test-storage/resumes
+
+logging:
+  level:
+    root: WARN
+    com.example.job_matchwer: DEBUG

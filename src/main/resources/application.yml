@@ -4,8 +4,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/jobmatcher
-    username: jobmatcher
-    password: dev_password
+    username: ${DB_USERNAME:jobmatcher}
+    password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
