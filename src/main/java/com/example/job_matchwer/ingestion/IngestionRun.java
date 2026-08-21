@@ -1,10 +1,9 @@
 package com.example.job_matchwer.ingestion;
 
+import com.example.job_matchwer.job.JobSource;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,33 +15,34 @@ import java.util.UUID;
 public class IngestionRun {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, updatable = false)
     private JobSource source;
 
-    @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    @LastModifiedDate
+    @Column(nullable = false, updatable = false)
     private Instant startedAt;
 
-    @Column(nullable = false, updatable = false)
+    private Instant completedAt;
+
+    @Column(nullable = false)
     private int jobsFetched;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private int jobsCreated;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private int jobsSkipped;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private IngestionStatus status;
 
     @Column(columnDefinition = "TEXT")
     private String errorMessage;
-
 }
