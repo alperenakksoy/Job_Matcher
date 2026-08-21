@@ -64,3 +64,17 @@ CREATE TABLE refresh_tokens (
 CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token);
 CREATE INDEX idx_jobs_posted_at ON app_jobs(posted_at);
 CREATE INDEX idx_jobs_status ON app_jobs(status);
+
+CREATE TABLE ingestion_runs (
+                                id UUID PRIMARY KEY,
+                                source VARCHAR(50) NOT NULL,
+                                started_at TIMESTAMPTZ NOT NULL,
+                                completed_at TIMESTAMPTZ,
+                                jobs_fetched INT NOT NULL DEFAULT 0,
+                                jobs_created INT NOT NULL DEFAULT 0,
+                                jobs_skipped INT NOT NULL DEFAULT 0,
+                                status VARCHAR(20) NOT NULL,
+                                error_message TEXT,
+                                created_at TIMESTAMPTZ NOT NULL,
+                                updated_at TIMESTAMPTZ NOT NULL
+);

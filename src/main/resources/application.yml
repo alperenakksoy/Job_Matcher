@@ -46,6 +46,10 @@ jwt:
   refresh-token-ttl: 7d
   issuer: jobmatcher
 
+integrations:
+  arbeitnow:
+    base-url: https://www.arbeitnow.com/api/job-board-api
+
 app:
   storage:
     resume-path: ./storage/resumes
