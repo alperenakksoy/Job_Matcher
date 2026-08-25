@@ -50,6 +50,11 @@ integrations:
   arbeitnow:
     base-url: https://www.arbeitnow.com/api/job-board-api
 
+ingestion:
+  arbeitnow:
+    # Every 30 minutes. Override per-environment (e.g. shorter for local testing).
+    cron: "0 */30 * * * *"
+
 app:
   storage:
     resume-path: ./storage/resumes

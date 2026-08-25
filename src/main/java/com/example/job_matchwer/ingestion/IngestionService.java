@@ -9,7 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -29,19 +28,31 @@ public class IngestionService {
     public IngestionRun runIngestion() {
         IngestionRun run = new IngestionRun();
         run.setSource(JobSource.ARBEITNOW);
-        run.setCreatedAt(Instant.now());
         run.setStartedAt(Instant.now());
         run.setStatus(IngestionStatus.RUNNING);
         run = ingestionRunRepository.save(run);
 
-        List<ArbeitnowJobDto> jobs;
+        ArbeitnowClient.PartialIngestionResult result;
         try {
-            jobs = arbeitnowClient.getJobs().data();
+            result = arbeitnowClient.getAllJobs();
         } catch (Exception e) {
             log.error("Ingestion run {} failed while fetching jobs", run.getId(), e);
             run.setStatus(IngestionStatus.FAILED);
             run.setCompletedAt(Instant.now());
             run.setErrorMessage(truncate(e.getMessage()));
+            return ingestionRunRepository.save(run);
+        }
+
+        List<ArbeitnowJobDto> jobs = result.jobs();
+
+        if (!result.complete() && jobs.isEmpty()) {
+            // failed on the very first page - nothing to process
+            log.error("Ingestion run {} failed while fetching jobs", run.getId(), result.failure());
+            run.setStatus(IngestionStatus.FAILED);
+            run.setCompletedAt(Instant.now());
+            run.setErrorMessage(truncate(
+                    result.failure() != null ? result.failure().getMessage() : "Failed to fetch jobs"
+            ));
             return ingestionRunRepository.save(run);
         }
 
@@ -77,11 +88,17 @@ public class IngestionService {
             }
         }
 
-        run.setStatus(IngestionStatus.COMPLETED);
+        run.setStatus(result.complete() ? IngestionStatus.COMPLETED : IngestionStatus.PARTIAL);
         run.setCompletedAt(Instant.now());
         run.setJobsFetched(jobs.size());
         run.setJobsCreated(created);
         run.setJobsSkipped(skipped);
+        if (!result.complete()) {
+            run.setErrorMessage(truncate(
+                    "Pagination stopped early: " +
+                            (result.failure() != null ? result.failure().getMessage() : "unknown error")
+            ));
+        }
 
         return ingestionRunRepository.save(run);
     }
