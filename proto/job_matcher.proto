@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package jobmatcher.v1;
+
+// Java: grpc-spring-boot-starter generates classes under this package.
+option java_package = "com.example.job_matchwer.grpc";
+option java_multiple_files = true;
+
+// Python: grpcio-tools generates job_matcher_pb2.py / job_matcher_pb2_grpc.py
+// directly at the location you run protoc from - no package option needed.
+
+// ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+// Where a field's value came from. LLM is defined now (Week 4 will use it)
+// even though only DETERMINISTIC and MISSING are produced this week -
+// adding enum values later is backwards compatible, so we define the full
+// set up front rather than changing the wire format again next week.
+enum ExtractionSource {
+  EXTRACTION_SOURCE_UNSPECIFIED = 0;
+  DETERMINISTIC = 1;
+  LLM = 2;
+  MISSING = 3;
+}
+
+// Wraps every extracted field with how confident we are and where it came
+// from. This is the core of the "hybrid parsing" approach from the plan:
+// every field's provenance is explicit, so Week 4's LLM completion step
+// knows exactly which fields still need filling in.
+message ExtractedField {
+  string value = 1;
+  float confidence = 2; // 0.0 - 1.0. 0 when source is MISSING.
+  ExtractionSource source = 3;
+}
+
+message ExtractedFieldList {
+  repeated ExtractedField values = 1;
+}
+
+// ---------------------------------------------------------------------------
+// ParseResume - implemented this week (deterministic parser only)
+// ---------------------------------------------------------------------------
+
+message ParseResumeRequest {
+  string resume_id = 1;      // Spring's Resume.id, echoed back for correlation
+  bytes file_content = 2;    // raw PDF bytes - Spring reads the file, Python parses it
+  string original_filename = 3; // for logging/debugging on the Python side
+}
+
+message ParsedResume {
+  ExtractedField email = 1;
+  ExtractedField phone = 2;
+  ExtractedField full_name = 3;
+
+  // Dates are free-form strings on purpose (see proto design note): resume
+  // dates are frequently partial or ambiguous ("Jan 2023", "3 yrs", "Present").
+  // Normalize to "YYYY-MM" where the regex confidently can; otherwise keep
+  // the raw text with low confidence and source MISSING so Week 4's LLM
+  // pass knows to look at it.
+  repeated WorkExperience work_experience = 4;
+  repeated Education education = 5;
+
+  ExtractedFieldList skills = 6;
+
+  // Raw section text keyed by detected heading (e.g. "Experience",
+  // "Education", "Skills") - kept for debugging and as a fallback source
+  // for the LLM completion step in Week 4.
+  map<string, string> raw_sections = 7;
+}
+
+message WorkExperience {
+  ExtractedField company = 1;
+  ExtractedField title = 2;
+  ExtractedField start_date = 3; // free-form string, see note above
+  ExtractedField end_date = 4;   // free-form string; "Present" is a valid value
+  ExtractedField description = 5;
+}
+
+message Education {
+  ExtractedField institution = 1;
+  ExtractedField degree = 2;
+  ExtractedField field_of_study = 3;
+  ExtractedField start_date = 4;
+  ExtractedField end_date = 5;
+}
+
+message ParseResumeResponse {
+  string resume_id = 1;
+  bool success = 2;
+  string error_message = 3; // empty when success = true
+  ParsedResume parsed = 4;
+}
+
+// ---------------------------------------------------------------------------
+// ParseJob - skeleton only this week, implemented in Week 4
+// ---------------------------------------------------------------------------
+
+message ParseJobRequest {
+  string job_id = 1;
+  string raw_description = 2; // free-text job posting body
+}
+
+message ParsedJob {
+  ExtractedFieldList required_skills = 1;
+  ExtractedFieldList nice_to_have_skills = 2;
+  ExtractedField seniority_level = 3;
+  ExtractedField employment_type = 4;
+}
+
+message ParseJobResponse {
+  string job_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  ParsedJob parsed = 4;
+}
+
+// ---------------------------------------------------------------------------
+// ComputeMatch - skeleton only this week, implemented in Week 5
+// ---------------------------------------------------------------------------
+
+message ComputeMatchRequest {
+  string resume_id = 1;
+  string job_id = 2;
+}
+
+message MatchScoreBreakdown {
+  float semantic_score = 1;
+  float skills_score = 2;
+  float experience_score = 3;
+  float language_score = 4;
+  float total_score = 5;
+}
+
+message ComputeMatchResponse {
+  string resume_id = 1;
+  string job_id = 2;
+  bool success = 3;
+  string error_message = 4;
+  MatchScoreBreakdown breakdown = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Service definition
+// ---------------------------------------------------------------------------
+
+service JobMatcherMlService {
+  // Implemented this week.
+  rpc ParseResume(ParseResumeRequest) returns (ParseResumeResponse);
+
+  // Skeleton this week - returns success=false with a clear
+  // "not implemented yet" error_message until Week 4/5.
+  rpc ParseJob(ParseJobRequest) returns (ParseJobResponse);
+  rpc ComputeMatch(ComputeMatchRequest) returns (ComputeMatchResponse);
+}
