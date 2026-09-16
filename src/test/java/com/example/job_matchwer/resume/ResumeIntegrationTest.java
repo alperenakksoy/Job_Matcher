@@ -1,10 +1,17 @@
 package com.example.job_matchwer.resume;
 
 import com.example.job_matchwer.auth.RegisterRequest;
+import com.example.job_matchwer.grpc.ExtractedField;
+import com.example.job_matchwer.grpc.ExtractionSource;
+import com.example.job_matchwer.grpc.ParseResumeResponse;
+import com.example.job_matchwer.grpc.ParsedResume;
+import com.example.job_matchwer.mlclient.MlServiceClient;
 import com.example.job_matchwer.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +22,9 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,6 +40,31 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
     // write into the real project tree because of that, so we clean up
     // everything created under it after each test.
     private static final Path UPLOAD_ROOT = Paths.get(System.getProperty("user.dir"), "storage", "resumes");
+
+    // ResumeService now calls ml-service synchronously right after upload.
+    // Mocked here (rather than pointing at a real ml-service) so these tests
+    // stay fast and deterministic regardless of whether ml-service happens
+    // to be running - the parsing behavior itself is covered separately in
+    // ResumeParsingIntegrationTest. Default: parsing always succeeds, since
+    // the tests in this class care about upload mechanics, not parsing.
+    @MockitoBean
+    private MlServiceClient mlServiceClient;
+
+    @BeforeEach
+    void stubMlServiceSuccess() {
+        when(mlServiceClient.parseResume(anyString(), any(byte[].class), anyString()))
+                .thenAnswer(invocation -> ParseResumeResponse.newBuilder()
+                        .setResumeId(invocation.getArgument(0))
+                        .setSuccess(true)
+                        .setParsed(ParsedResume.newBuilder()
+                                .setEmail(ExtractedField.newBuilder()
+                                        .setValue("test@example.com")
+                                        .setConfidence(0.9f)
+                                        .setSource(ExtractionSource.DETERMINISTIC)
+                                        .build())
+                                .build())
+                        .build());
+    }
 
     private String registerAndGetToken() throws Exception {
         String email = "user-" + UUID.randomUUID() + "@example.com";
@@ -84,7 +119,10 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNotEmpty())
                 .andExpect(jsonPath("$.originalFileName").value("cv.pdf"))
-                .andExpect(jsonPath("$.status").value("UPLOADED"));
+                // Was UPLOADED before parsing was wired up synchronously into
+                // the upload flow (Week 3) - now parsing always runs, and the
+                // mocked ml-service above always succeeds, so PARSED.
+                .andExpect(jsonPath("$.status").value("PARSED"));
     }
 
     @Test

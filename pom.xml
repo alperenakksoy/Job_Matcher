@@ -30,6 +30,11 @@
         <java.version>21</java.version>
         <testcontainers.version>1.20.4</testcontainers.version>
         <shedlock.version>7.9.0</shedlock.version>
+        <grpc.version>1.81.0</grpc.version>
+        <protobuf.version>3.25.8</protobuf.version>
+        <!-- proto files live outside src/main/java so both Spring and the
+             Python ml-service can generate code from the same source of truth -->
+        <proto.sourceRoot>${project.basedir}/proto</proto.sourceRoot>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -37,6 +42,13 @@
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
                 <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -81,6 +93,48 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- GRPC CLIENT TO ML SERVICE -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-protobuf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-stub</artifactId>
+        </dependency>
+        <dependency>
+            <!-- grpc-stub's generated code references @Generated, which moved
+                 out of the JDK after Java 8 -->
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+        </dependency>
+        <dependency>
+            <!-- JsonFormat: converts the ParsedResume proto message straight
+                 into the JSON string stored in resumes.parsed_data (jsonb) -->
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java-util</artifactId>
+            <version>${protobuf.version}</version>
+        </dependency>
+
+        <!-- RESILIENCE4J CIRCUIT BREAKER (protects Spring from a dead ml-service) -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot4</artifactId>
+            <version>2.4.0</version>
+        </dependency>
+        <dependency>
+            <!-- @CircuitBreaker is applied via a Spring AOP proxy - without this
+                 starter the annotation is silently ignored, no error thrown.
+                 Renamed from spring-boot-starter-aop in Spring Boot 4.0. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
         </dependency>
 
         <!-- SCHEDULING / SHEDLOCK -->
@@ -141,7 +195,35 @@
     </dependencies>
 
     <build>
+        <extensions>
+            <!-- Detects OS/arch (e.g. osx-aarch_64, linux-x86_64) so the right
+                 prebuilt protoc/protoc-gen-grpc-java binary gets downloaded below -->
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+            </extension>
+        </extensions>
         <plugins>
+            <plugin>
+                <groupId>org.xolstice.maven.plugins</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <version>0.6.1</version>
+                <configuration>
+                    <protoSourceRoot>${proto.sourceRoot}</protoSourceRoot>
+                    <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+                    <pluginId>grpc-java</pluginId>
+                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>compile-custom</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

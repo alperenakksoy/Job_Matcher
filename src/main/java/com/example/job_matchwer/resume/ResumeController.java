@@ -25,10 +25,10 @@ public class ResumeController {
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal UserDetails userDetails) {
 
-        // İşlemi servise devrediyoruz, yükleyen kullanıcının e-postasını da iletiyoruz
-        ResumeResponseDto response = resumeService.uploadResume(file, userDetails.getUsername());
+        ResumeResponseDto uploaded = resumeService.uploadResume(file, userDetails.getUsername());
+        ResumeResponseDto parsed = resumeService.parseResume(uploaded.getId(), userDetails.getUsername());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(parsed);
     }
 
     @GetMapping

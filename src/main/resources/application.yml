@@ -58,6 +58,33 @@ ingestion:
 app:
   storage:
     resume-path: ./storage/resumes
+
+ml-service:
+  grpc:
+    host: localhost
+    port: 50051
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      ml-service:
+        # Of the last 10 calls, if 50% failed, trip the breaker.
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        # Stay OPEN (fail fast, skip the fallback... call ml-service) for 30s
+        # before allowing a trial call through again.
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  timelimiter:
+    instances:
+      ml-service:
+        # ParseResume involves an LLM call on the Python side for missing
+        # fields - give it real headroom, but don't let a hung call block
+        # the upload request forever.
+        timeout-duration: 15s
 management:
   endpoints:
     web:
