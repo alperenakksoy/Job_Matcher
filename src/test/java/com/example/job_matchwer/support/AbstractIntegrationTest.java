@@ -24,19 +24,16 @@ import org.testcontainers.utility.DockerImageName;
 @Import(AbstractIntegrationTest.MockMvcContextPathConfig.class)
 public abstract class AbstractIntegrationTest {
 
-    // DİKKAT: @Container anotasyonunu kaldırdık!
     @ServiceConnection
     static PostgreSQLContainer<?> postgres =
             new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg16")
                     .asCompatibleSubstituteFor("postgres"));
 
-    // DİKKAT: @Container anotasyonunu kaldırdık!
     @ServiceConnection(name = "redis")
     static GenericContainer<?> redis =
             new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
                     .withExposedPorts(6379);
 
-    // YENİ EKLENEN KISIM: Konteynerleri tüm testler için sadece BİR KERE manuel başlatıyoruz
     static {
         postgres.start();
         redis.start();

@@ -10,11 +10,20 @@ import grpc
 
 from app.generated import job_matcher_pb2 as pb2
 from app.generated import job_matcher_pb2_grpc as pb2_grpc
+from app.llm.fallback import FallbackLLMProvider
+from app.llm.providers import GeminiProvider, GroqProvider
+from app.llm.resume_completion import complete_missing_fields
 from app.parsing import models
 from app.parsing.deterministic_parser import parse_resume
 from app.parsing.pdf_extractor import PdfExtractionError, extract_text
 
 logger = logging.getLogger(__name__)
+
+# Built once per process, not per request - each provider's underlying
+# instructor/SDK client does its own connection pooling internally.
+# Order matters: Gemini first (generous free tier for this project's
+# volume), Groq as fallback.
+_fallback_provider = FallbackLLMProvider([GeminiProvider(), GroqProvider()])
 
 _SOURCE_TO_PROTO = {
     models.ExtractionSource.DETERMINISTIC: pb2.DETERMINISTIC,
@@ -94,6 +103,13 @@ class JobMatcherMlServicer(pb2_grpc.JobMatcherMlServiceServicer):
                 success=False,
                 error_message=f"Internal parsing error: {e}",
             )
+
+        # LLM completion never fails the request - see resume_completion's
+        # module docstring. Any missing fields it can't fill just stay
+        # MISSING, exactly as the deterministic parser left them.
+        parsed = complete_missing_fields(
+            parsed, raw_text, request.resume_id, _fallback_provider,
+        )
 
         return pb2.ParseResumeResponse(
             resume_id=request.resume_id,
