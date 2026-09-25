@@ -1,6 +1,8 @@
 package com.example.job_matchwer.mlclient;
 
 import com.example.job_matchwer.grpc.JobMatcherMlServiceGrpc;
+import com.example.job_matchwer.grpc.ParseJobRequest;
+import com.example.job_matchwer.grpc.ParseJobResponse;
 import com.example.job_matchwer.grpc.ParseResumeRequest;
 import com.example.job_matchwer.grpc.ParseResumeResponse;
 import com.google.protobuf.ByteString;
@@ -56,7 +58,7 @@ public class MlServiceClient {
      * CallNotPermittedException once the breaker is OPEN.
      */
     private ParseResumeResponse parseResumeFallback(String resumeId, byte[] fileContent,
-                                                      String originalFilename, Throwable t) {
+                                                    String originalFilename, Throwable t) {
         if (t instanceof StatusRuntimeException sre) {
             log.error("ml-service parseResume failed for resumeId={}: {}", resumeId, sre.getStatus(), sre);
         } else {
@@ -65,6 +67,42 @@ public class MlServiceClient {
 
         return ParseResumeResponse.newBuilder()
                 .setResumeId(resumeId)
+                .setSuccess(false)
+                .setErrorMessage("ml-service unavailable: " + t.getMessage())
+                .build();
+    }
+
+    /**
+     * Calls the ml-service to extract structured requirements from a job
+     * posting (Week 4). Reuses the same "ml-service" circuit breaker
+     * instance as parseResume - both calls hit the same underlying
+     * process, so a dead ml-service should trip the breaker for both
+     * regardless of which call noticed first.
+     *
+     * No Spring-side caller wires this in yet (no JobService/JobController
+     * exists to trigger it after ingestion) - this method exists so the
+     * ml-service side of Week 4 is fully usable once that trigger point is
+     * added, without needing another round of gRPC/circuit-breaker plumbing.
+     */
+    @CircuitBreaker(name = "ml-service", fallbackMethod = "parseJobFallback")
+    public ParseJobResponse parseJob(String jobId, String rawDescription) {
+        ParseJobRequest request = ParseJobRequest.newBuilder()
+                .setJobId(jobId)
+                .setRawDescription(rawDescription)
+                .build();
+
+        return stub.parseJob(request);
+    }
+
+    private ParseJobResponse parseJobFallback(String jobId, String rawDescription, Throwable t) {
+        if (t instanceof StatusRuntimeException sre) {
+            log.error("ml-service parseJob failed for jobId={}: {}", jobId, sre.getStatus(), sre);
+        } else {
+            log.error("ml-service parseJob unavailable for jobId={}: {}", jobId, t.getMessage(), t);
+        }
+
+        return ParseJobResponse.newBuilder()
+                .setJobId(jobId)
                 .setSuccess(false)
                 .setErrorMessage("ml-service unavailable: " + t.getMessage())
                 .build();

@@ -3,6 +3,7 @@ import logging
 from app.llm.execution_logger import log_execution
 from app.llm.fallback import AllProvidersFailedError, FallbackLLMProvider
 from app.llm.prompt_repository import PromptTemplateNotFoundError, get_active_prompt_template
+from app.llm.provider import LLMProviderError
 from app.llm.schemas import ResumeFieldCompletion
 from app.parsing import models
 
@@ -46,11 +47,17 @@ def parsed_education_raw_text(parsed: models.ParsedResume) -> str:
 
 
 def complete_missing_fields(
-    parsed: models.ParsedResume,
-    raw_text: str,
-    resume_id: str,
-    fallback_provider: FallbackLLMProvider,
+        parsed: models.ParsedResume,
+        raw_text: str,
+        resume_id: str,
+        fallback_provider: FallbackLLMProvider,
 ) -> models.ParsedResume:
+    """Returns a ParsedResume with LLM-completed values merged in.
+
+    Mutates and returns the same object's fields where completion
+    succeeds; leaves everything else untouched. Never raises - any
+    failure here means the fields stay MISSING, logged as a warning.
+    """
     if not _needs_completion(parsed):
         return parsed
 
@@ -64,7 +71,13 @@ def complete_missing_fields(
 
     try:
         result, provider_name = fallback_provider.complete(prompt, ResumeFieldCompletion)
-    except AllProvidersFailedError as e:
+    except (AllProvidersFailedError, LLMProviderError) as e:
+        # AllProvidersFailedError: every provider failed with a retryable
+        # error. LLMProviderError: some provider (possibly the last one in
+        # the chain) failed with a NON-retryable error, which
+        # FallbackLLMProvider re-raises immediately instead of wrapping -
+        # see fallback.py. Either way, missing fields just stay MISSING;
+        # this never fails the overall resume parse.
         logger.warning("LLM completion failed for resume_id=%s: %s", resume_id, e)
         log_execution(
             prompt_template_id=template.id, resume_id=resume_id,

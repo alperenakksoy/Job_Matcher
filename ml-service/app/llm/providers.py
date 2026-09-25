@@ -1,3 +1,16 @@
+"""Concrete LLMProvider implementations.
+
+Both use instructor's unified `from_provider("vendor/model")` API rather
+than each vendor's raw SDK client - this is the same interaction pattern
+instructor documents for every backend, so swapping/adding a provider
+later (e.g. an OpenAI fallback) means one new class shaped exactly like
+these two, not a new integration pattern.
+
+API keys are read from the environment (GOOGLE_API_KEY, GROQ_API_KEY) by
+instructor/the underlying SDKs themselves - not read explicitly here, so
+we never hold a key in a Python variable longer than necessary.
+"""
+
 import logging
 import time
 
@@ -8,6 +21,10 @@ from app.llm.provider import LLMCallResult, LLMProvider, LLMProviderError, T
 
 logger = logging.getLogger(__name__)
 
+# Quota/rate-limit errors differ by SDK; instructor doesn't normalize these
+# into a single exception type, so each provider maps its own SDK's
+# exceptions. We only need to distinguish "worth trying the next provider"
+# from "will fail the same way everywhere" (e.g. a malformed prompt).
 _RETRYABLE_ERROR_MARKERS = (
     "rate limit", "rate_limit", "quota", "resource_exhausted",
     "429", "503", "overloaded", "timeout", "unavailable",
@@ -22,8 +39,10 @@ def _is_retryable(exc: Exception) -> bool:
 class GeminiProvider(LLMProvider):
     name = "gemini"
 
-    def __init__(self, model: str = "gemini-2.0-flash"):
+    def __init__(self, model: str = "gemini-3.8-flash"):
         self.model = model
+        # instructor.from_provider builds the underlying google-genai client
+        # internally and reads GOOGLE_API_KEY from the environment.
         self._client = instructor.from_provider(f"google/{model}")
 
     def complete(self, prompt: str, response_model: type[T]) -> LLMCallResult:
@@ -55,7 +74,7 @@ class GeminiProvider(LLMProvider):
 class GroqProvider(LLMProvider):
     name = "groq"
 
-    def __init__(self, model: str = "llama-3.3-70b-versatile"):
+    def __init__(self, model: str = "openai/gpt-oss-120b"):
         self.model = model
         self._client = instructor.from_provider(f"groq/{model}")
 

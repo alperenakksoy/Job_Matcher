@@ -11,8 +11,10 @@ import grpc
 from app.generated import job_matcher_pb2 as pb2
 from app.generated import job_matcher_pb2_grpc as pb2_grpc
 from app.llm.fallback import FallbackLLMProvider
+from app.llm.job_extraction import JobExtractionError, extract_job_fields
 from app.llm.providers import GeminiProvider, GroqProvider
 from app.llm.resume_completion import complete_missing_fields
+from app.llm.schemas import JobExtraction
 from app.parsing import models
 from app.parsing.deterministic_parser import parse_resume
 from app.parsing.pdf_extractor import PdfExtractionError, extract_text
@@ -72,6 +74,40 @@ def _parsed_resume_to_proto(parsed: models.ParsedResume) -> pb2.ParsedResume:
     )
 
 
+# Confidence for job extraction is a flat constant rather than something
+# the LLM reports per-field: instructor forces the response into
+# JobExtraction, which has no per-field confidence score, and asking the
+# LLM to self-report confidence values is unreliable in practice. 0.8
+# reflects "the LLM extracted this from explicit text" without pretending
+# to a precision the model doesn't actually have.
+_JOB_EXTRACTION_CONFIDENCE = 0.8
+
+
+def _job_skill_to_proto(skill: str) -> pb2.ExtractedField:
+    return pb2.ExtractedField(
+        value=skill, confidence=_JOB_EXTRACTION_CONFIDENCE, source=pb2.LLM,
+    )
+
+
+def _job_single_field_to_proto(value: str) -> pb2.ExtractedField:
+    if not value:
+        return pb2.ExtractedField(value="", confidence=0.0, source=pb2.MISSING)
+    return pb2.ExtractedField(value=value, confidence=_JOB_EXTRACTION_CONFIDENCE, source=pb2.LLM)
+
+
+def _job_extraction_to_proto(extraction: JobExtraction) -> pb2.ParsedJob:
+    return pb2.ParsedJob(
+        required_skills=pb2.ExtractedFieldList(
+            values=[_job_skill_to_proto(s) for s in extraction.required_skills],
+        ),
+        nice_to_have_skills=pb2.ExtractedFieldList(
+            values=[_job_skill_to_proto(s) for s in extraction.nice_to_have_skills],
+        ),
+        seniority_level=_job_single_field_to_proto(extraction.seniority_level),
+        employment_type=_job_single_field_to_proto(extraction.employment_type),
+    )
+
+
 class JobMatcherMlServicer(pb2_grpc.JobMatcherMlServiceServicer):
 
     def ParseResume(self, request: pb2.ParseResumeRequest, context) -> pb2.ParseResumeResponse:
@@ -118,16 +154,40 @@ class JobMatcherMlServicer(pb2_grpc.JobMatcherMlServiceServicer):
         )
 
     def ParseJob(self, request: pb2.ParseJobRequest, context) -> pb2.ParseJobResponse:
-        # Skeleton only - implemented in Week 4 (LLM-heavy extraction for
-        # free-text job postings, per the plan). Returning a clear
-        # success=False here rather than an empty/zero-value response so
-        # Spring's Resilience4j circuit breaker and the caller's own
-        # error handling have something explicit to act on.
-        logger.info("ParseJob called for job_id=%s - not implemented until Week 4", request.job_id)
+        logger.info(
+            "ParseJob request received: job_id=%s description_length=%d",
+            request.job_id, len(request.raw_description),
+        )
+
+        if not request.raw_description.strip():
+            return pb2.ParseJobResponse(
+                job_id=request.job_id,
+                success=False,
+                error_message="raw_description is empty",
+            )
+
+        try:
+            extraction = extract_job_fields(
+                request.raw_description, request.job_id, _fallback_provider,
+            )
+        except JobExtractionError as e:
+            # Unlike resume parsing, there's no deterministic fallback data
+            # underneath a failed job extraction - an empty ParsedJob would
+            # look like "this posting genuinely has no requirements" rather
+            # than "extraction failed", which is a meaningfully different
+            # and worse signal to feed into matching later. So this fails
+            # the whole request instead of returning a degraded result.
+            logger.warning("Job extraction failed for job_id=%s: %s", request.job_id, e)
+            return pb2.ParseJobResponse(
+                job_id=request.job_id,
+                success=False,
+                error_message=str(e),
+            )
+
         return pb2.ParseJobResponse(
             job_id=request.job_id,
-            success=False,
-            error_message="ParseJob is not implemented yet (planned for Week 4)",
+            success=True,
+            parsed=_job_extraction_to_proto(extraction),
         )
 
     def ComputeMatch(self, request: pb2.ComputeMatchRequest, context) -> pb2.ComputeMatchResponse:
